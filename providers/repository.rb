@@ -37,7 +37,8 @@ def install_key_from_keyserver(key, keyserver)
         fingerprint.end_with?(key.upcase)
       end
 
-      key_present and key_is_valid('apt-key list', key.upcase)
+      # will not show as present unless it is valid
+      key_present
     end
   end
 
@@ -52,9 +53,18 @@ end
 def extract_fingerprints_from_cmd(cmd)
   so = Mixlib::ShellOut.new(cmd)
   so.run_command
+  # omit expired keys so they get reinstalled
+  # a little state machine...
+  expired_key = nil
   so.stdout.split(/\n/).map do |t|
-    if z = t.match(/^ +Key fingerprint = ([0-9A-F ]+)/)
-      z[1].split.join
+    if z = t.match(/^pub[^\/]+\/([A-F0-9]{4})([A-F0-9]{4}).*\[expired: .*\]/)
+      expired_key = "#{z[1]} #{z[2]}"
+      nil
+    elsif z = t.match(/^ +Key fingerprint = ([0-9A-F ]+)/)
+      parts = z[1].split
+      parts.join unless "#{parts[-2]} #{parts[-1]}" == expired_key
+    else
+      expired_key = nil
     end
   end.compact
 end
